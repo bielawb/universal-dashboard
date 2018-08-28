@@ -1459,7 +1459,14 @@ function Publish-UDDashboard {
 		[Parameter(Mandatory = $true)]
 		[string]$DashboardFile,
 		[Parameter()]
-		[string]$TargetPath = $PSScriptRoot
+		[string]$TargetPath = $PSScriptRoot,
+        [Parameter()]
+        [String]$Name = 'UniversalDashboard',
+        [Parameter()]
+        [String]$DisplayName = 'PowerShell Universal Dashboard',
+        [Parameter()]
+        [pscredential]
+        [Management.Automation.Credential()]$Credential = [pscredential]::Empty
 	)
 
 	$DashboardFile = Resolve-Path $DashboardFile
@@ -1502,20 +1509,36 @@ function Publish-UDDashboard {
 
 	if ($PSCmdlet.ParameterSetName -eq 'Service') {
 
-		$ServiceStart = 'auto'
+		$ServiceStart = [ServiceProcess.ServiceStartMode]::Automatic
 		if ($Manual) {
-			$ServiceStart = 'demand'
+			$ServiceStart = [ServiceProcess.ServiceStartMode]::Manual
 		}
 
-		if ((Get-Service -Name UniversalDashboard -ErrorAction SilentlyContinue) -ne $null) {
+		if ((Get-Service -Name $Name -ErrorAction SilentlyContinue) -ne $null) {
 			Write-Verbose "Removing dashboard service"
-			sc.exe delete UniversalDashboard
+			sc.exe delete $Name
 		}
 
-		Write-Verbose "Creating service UniversalDashboard"
-		sc.exe create UniversalDashboard DisplayName="PowerShell Universal Dashboard" binPath="$TargetPath\net462\UniversalDashboard.Server.exe --run-as-service" start="$ServiceStart"
+		Write-Verbose "Creating service $Name"
+        $newServiceParameters = @{
+            Name = $Name
+            BinaryPathName = "$TargetPath\net462\UniversalDashboard.Server.exe --run-as-service"
+            DisplayName = $DisplayName
+            StartupType = $ServiceStart
+            ErrorAction = 'Stop'
+        }
 
-		Write-Verbose "Starting service UniversalDashboard"
-		sc.exe start UniversalDashboard
+        if ($Credential -ne [pscredential]::Empty) {
+            $newServiceParameters['Credential'] = $Credential
+        }
+
+        try {
+            New-Service @newServiceParameters
+            Start-Service -Name $Name -ErrorAction Stop
+        }
+        catch
+        {
+            throw "Failed to install service $Name - $_"
+        }
 	}
 }
